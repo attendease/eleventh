@@ -1,0 +1,87 @@
+#!/usr/bin/env ruby
+
+require 'rubygems'
+require 'commander/import'
+require 'aws-sdk'
+
+$:.push File.expand_path("../lib", __FILE__)
+require 'eleventh'
+
+program :version, Eleventh::VERSION
+program :description, 'Synchronize locally developed Lambda functions to AWS Lambda'
+
+program :help, 'Author', 'Michael Wood <mike@attendease.com>'
+program :help, 'Website', 'https://attendease.com'
+program :help_formatter, :compact
+
+command :init do |c|
+  c.syntax = 'eleventh init <project> [options]'
+  c.description = 'Initializes a project of Lambda functions for syncing'
+  c.option '--project NAME', String, 'Project name'
+  c.option '--region REGION', String, 'AWS Region'
+  c.option '--profile_name YOUR_AWS_CLI_PROFILE', String, 'AWS CLI Profile'
+  c.option '--dest DIR', String, 'Destination directory'
+  c.action do |args, options|
+    profile_name = options.profile_name || 'default'
+
+    credentials = Aws::SharedCredentials.new(:profile_name => profile_name)
+
+    if credentials.loadable?
+      options.default \
+        :region => 'us-west-2'
+
+      project = args.first || options.project
+
+      unless project || options.region
+        say_error "Must specify --project NAME --region REGION --profile_name YOUR_AWS_CLI_PROFILE"
+        abort
+      end
+
+      if options.dest
+        initPath = File.expand_path(File.join(options.dest, project))
+      else
+        initPath = File.expand_path(File.join(Dir.pwd, project))
+      end
+
+      say "Amazing Web Services Config:"
+      say " AWS Region: #{options.region}"
+      say " AWS CLI Profile: #{profile_name}"
+      say " AWS Access Key ID: #{credentials.credentials.access_key_id}"
+      say " AWS Secret Access Key: #{credentials.credentials.secret_access_key}"
+
+      print "Initialize project to #{initPath}? [Y/n]: "
+      confirm = $stdin.gets.chomp
+
+      abort("Whoa, that was close!") if confirm.downcase == 'n'
+
+      say "Cool. Initializing project to #{initPath}..."
+
+      result = Eleventh.init_project(initPath, options.region, profile_name)
+
+      if result[:success]
+        say "Done."
+      else
+        say_error result[:message]
+        abort
+      end
+    else
+      say_error "You must set up your AWS CLI profile before proceeding."
+      abort
+    end
+  end
+end
+
+command :sync do |c|
+  c.syntax = 'eleventh sync [options]'
+  c.description = 'Synchronizes the local Lambda functions with AWS'
+  c.action do |args, options|
+    result = Eleventh.sync
+
+    if result[:success]
+      say "Done."
+    else
+      say_error result[:message]
+      abort
+    end
+  end
+end
